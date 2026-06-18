@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dashboard - Rental Hub</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='assets/dashboard.css') }}">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    /* Booking Modal Styles */
+    .modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.7); justify-content:center; align-items:center; }
+    .modal-content { background:#2a2a3d; padding:20px; border-radius:10px; width:300px; position:relative; color:#fff; }
+    .close-btn { position:absolute; top:10px; right:15px; cursor:pointer; font-size:20px; }
+    input, textarea { width:100%; margin:5px 0; padding:5px; border-radius:5px; border:none; }
+    .booking-row { background:#1f1f2e; padding:10px; border-radius:6px; margin-bottom:8px; }
+    .booking-row button { margin-top:5px; }
+  </style>
+</head>
+<body>
+  <div class="dashboard-wrapper">
+    <aside class="sidebar">
+      <h2>RentalHub</h2>
+      <ul>
+        <li><a href="#" onclick="showTab('myRentals', this)">My Rentals</a></li>
+        <li><a href="{{ url_for('post_rent_page') }}">Post New</a></li>
+        <li><a href="#" onclick="showTab('bookingsTab', this)">Bookings</a></li>
+        <li><a href="#" id="logoutBtn">Logout</a></li>
+      </ul>
+    </aside>
+
+    <main class="main-content">
+      <h1 id="welcomeMessage">Welcome to your Dashboard</h1>
+      <p id="userEmail"></p>
+
+      <!-- Tabs -->
+      <div class="tabs">
+        <button class="tab-btn active" onclick="showTab('myRentals', this)">My Rentals</button>
+        <button class="tab-btn" onclick="showTab('allRentals', this)">All Rentals</button>
+        <button class="tab-btn" onclick="showTab('bookingsTab', this)">Bookings</button>
+      </div>
+
+      <!-- My Rentals -->
+      <section id="myRentals" class="tab-content active">
+        <div id="rentalsContainer" class="rentals-grid"></div>
+      </section>
+
+      <!-- All Rentals -->
+      <section id="allRentals" class="tab-content">
+        <div class="search-bar">
+          <input type="text" id="searchTitle" placeholder="Search by Title">
+          <input type="text" id="searchLocation" placeholder="Location">
+          <input type="number" id="searchMinPrice" placeholder="Min Price">
+          <input type="number" id="searchMaxPrice" placeholder="Max Price">
+          <select id="searchCategory">
+            <option value="">All Categories</option>
+            <option value="room">Room</option>
+            <option value="apartment">Apartment</option>
+            <option value="house">House</option>
+            <option value="bike">Bike</option>
+            <option value="book">Book</option>
+          </select>
+          <button class="btn btn-search" onclick="searchPosts()">🔍</button>
+        </div>
+        <div id="allRentalsContainer" class="rentals-grid"></div>
+      </section>
+
+      <!-- Bookings Tab -->
+      <section id="bookingsTab" class="tab-content">
+        <h2>Your requests (as renter)</h2>
+        <div id="myBookingsList"></div>
+
+        <h2 style="margin-top: 24px;">Incoming requests (as owner)</h2>
+        <div id="ownerBookingsList"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Booking Modal -->
+  <div id="bookingModal" class="modal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeBookingModal()">✖</span>
+      <h2>Request Booking</h2>
+      <p id="bookingPostTitle" style="font-weight:600"></p>
+
+      <label>Start date</label>
+      <input id="bookingStart" type="date">
+
+      <label>End date</label>
+      <input id="bookingEnd" type="date">
+
+      <label>Message (optional)</label>
+      <textarea id="bookingMessage" placeholder="Message to owner..."></textarea>
+
+      <div style="margin-top:12px;">
+        <button class="btn btn-edit" onclick="submitBooking()">Send request</button>
+        <button class="btn btn-cancel" onclick="closeBookingModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const token = localStorage.getItem("token");
+    if (!token) { window.location.href = "{{ url_for('login_page') }}"; }
+
+    let bookingPostId = null;
+    let bookingPostTitle = "";
+
+    async function loadProfile() {
+      try {
+        const res = await fetch("/api/profile", { headers: { "Authorization": "Bearer " + token }});
+        const data = await res.json();
+        if (!res.ok) { 
+          alert(data.error || "Session expired");
+          localStorage.removeItem("token");
+          window.location.href = "{{ url_for('login_page') }}";
+          return;
+        }
+        document.getElementById("welcomeMessage").innerText = `Welcome, ${data.user.name}`;
+        document.getElementById("userEmail").innerText = data.user.email;
+        renderMyRentals(data.rentals);
+        loadAllPosts();
+        loadMyBookings();
+        loadOwnerBookings();
+      } catch (err) { console.error(err); }
+    }
+
+    function renderMyRentals(posts) {
+      const container = document.getElementById("rentalsContainer");
+      container.innerHTML = "";
+      if (!posts || posts.length === 0) { container.innerHTML = "<p>No rentals posted yet.</p>"; return; }
+      posts.forEach(post => {
+        const card = document.createElement("div");
+        card.className = "rental-card";
+        card.innerHTML = `
+          <h3>${post.title || "Untitled"}</h3>
+          <p><strong>Location:</strong> ${post.location || "N/A"}</p>
+          <p><strong>Rent:</strong> ₹${post.price ?? "N/A"}</p>
+          <p>${post.description || ""}</p>
+          <div style="margin-top:8px;">
+            <button class="btn btn-edit" onclick="editPost('${post._id}')">✏️ Edit</button>
+            <button class="btn btn-delete" onclick="deletePost('${post._id}')">🗑️ Delete</button>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    async function loadAllPosts() {
+      const res = await fetch("/api/all-posts");
+      const posts = await res.json();
+      renderAllPosts(posts);
+    }
+
+    function renderAllPosts(posts) {
+      const container = document.getElementById("allRentalsContainer");
+      container.innerHTML = "";
+      if (!posts || posts.length === 0) { container.innerHTML = "<p>No rentals available.</p>"; return; }
+      posts.forEach(post => {
+        const card = document.createElement("div");
+        card.className = "rental-card";
+        card.innerHTML = `
+          <h3>${post.title || "Untitled"}</h3>
+          <p><strong>Location:</strong> ${post.location || "N/A"}</p>
+          <p><strong>Rent:</strong> ₹${post.price ?? "N/A"}</p>
+          <p><strong>Category:</strong> ${post.category || "N/A"}</p>
+          <p>${post.description || ""}</p>
+          <div style="margin-top:8px;">
+            <button class="btn btn-edit" onclick="openBookingModal('${post._id}', '${(post.title||'Item').replace(/'/g, "\\'")}')">📅 Book</button>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function openBookingModal(postId, title) {
+      bookingPostId = postId;
+      bookingPostTitle = title;
+      document.getElementById("bookingPostTitle").innerText = title;
+      document.getElementById("bookingStart").value = "";
+      document.getElementById("bookingEnd").value = "";
+      document.getElementById("bookingMessage").value = "";
+      document.getElementById("bookingModal").style.display = "flex";
+    }
+
+    function closeBookingModal() { document.getElementById("bookingModal").style.display = "none"; }
+
+    async function submitBooking() {
+      const start = document.getElementById("bookingStart").value;
+      const end = document.getElementById("bookingEnd").value;
+      const message = document.getElementById("bookingMessage").value;
+
+      if (!start || !end) { alert("Please pick start and end dates"); return; }
+
+      const body = { post_id: bookingPostId, start_date: start, end_date: end, message };
+      const res = await fetch("/api/book", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+        body: JSON.stringify(body)
+      });
+
+      const data = await res.json();
+      if (res.ok) { alert("Booking request sent"); closeBookingModal(); loadMyBookings(); }
+      else { alert(data.error || "Failed to create booking"); }
+    }
+
+    async function loadMyBookings() {
+      const res = await fetch("/api/my-bookings", { headers: { "Authorization": "Bearer " + token }});
+      const docs = await res.json();
+      const node = document.getElementById("myBookingsList");
+      node.innerHTML = "";
+      if (!docs || docs.length === 0) { node.innerHTML = "<p>No booking requests yet.</p>"; return; }
+      docs.forEach(b => {
+        const div = document.createElement("div");
+        div.className = "booking-row";
+        div.innerHTML = `
+          <div style="display:flex; justify-content:space-between; gap:12px;">
+            <div>
+              <strong>${b.post_title}</strong> <small>(${b.start_date} → ${b.end_date})</small>
+              <div>${b.message || ""}</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-weight:600;">${b.status}</div>
+              ${b.status !== "cancelled" ? `<button class="btn btn-delete" onclick="cancelBooking('${b._id}')">Cancel</button>` : ""}
+            </div>
+          </div>
+          <hr />
+        `;
+        node.appendChild(div);
+      });
+    }
+
+    async function cancelBooking(bid) {
+      if (!confirm("Cancel booking?")) return;
+      const res = await fetch(`/api/bookings/${bid}`, { method: "DELETE", headers: { "Authorization": "Bearer " + token }});
+      if (res.ok) { alert("Booking cancelled"); loadMyBookings(); loadOwnerBookings(); }
+      else { const data = await res.json(); alert(data.error || "Failed to cancel"); }
+    }
+
+    async function loadOwnerBookings() {
+      const res = await fetch("/api/owner-bookings", { headers: { "Authorization": "Bearer " + token }});
+      const docs = await res.json();
+      const node = document.getElementById("ownerBookingsList");
+      node.innerHTML = "";
+      if (!docs || docs.length === 0) { node.innerHTML = "<p>No incoming requests.</p>"; return; }
+      docs.forEach(b => {
+        const div = document.createElement("div");
+        div.className = "booking-row";
+        div.innerHTML = `
+          <div style="display:flex; justify-content:space-between; gap:12px;">
+            <div>
+              <strong>${b.post_title}</strong>
+              <div><small>From: ${b.renter_email} | ${b.start_date} → ${b.end_date}</small></div>
+              <div>${b.message || ""}</div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-weight:700;">${b.status}</div>
+              ${b.status === "pending" ? `
+                <button class="btn btn-edit" onclick="acceptRejectBooking('${b._id}', 'accepted')">Accept</button>
+                <button class="btn btn-delete" onclick="acceptRejectBooking('${b._id}', 'rejected')">Reject</button>
+              ` : ""}
+            </div>
+          </div>
+          <hr />
+        `;
+        node.appendChild(div);
+      });
+    }
+
+    async function acceptRejectBooking(bid, status) {
+      const res = await fetch(`/api/bookings/${bid}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+        body: JSON.stringify({ status })
+      });
+      const data = await res.json();
+      if (res.ok) { alert("Updated"); loadOwnerBookings(); loadMyBookings(); }
+      else { alert(data.error || "Failed to update"); }
+    }
+
+    function showTab(tabId, btn) {
+      document.querySelectorAll(".tab-content").forEach(t => t.classList.remove("active"));
+      document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+      document.getElementById(tabId).classList.add("active");
+      if (btn) btn.classList.add("active");
+    }
+
+    document.getElementById("logoutBtn").addEventListener("click", () => {
+      localStorage.removeItem("token");
+      window.location.href = "{{ url_for('login_page') }}";
+    });
+
+    async function searchPosts() {
+      const title = document.getElementById("searchTitle").value;
+      const location = document.getElementById("searchLocation").value;
+      const min_price = document.getElementById("searchMinPrice").value;
+      const max_price = document.getElementById("searchMaxPrice").value;
+      const category = document.getElementById("searchCategory").value;
+
+      const params = new URLSearchParams();
+      if (title) params.append("title", title);
+      if (location) params.append("location", location);
+      if (min_price) params.append("min_price", min_price);
+      if (max_price) params.append("max_price", max_price);
+      if (category) params.append("category", category);
+
+      const res = await fetch(`/api/search?${params.toString()}`);
+      const posts = await res.json();
+      renderAllPosts(posts);
+    }
+
+    // initial load
+    loadProfile();
+  </script>
+</body>
+</html>

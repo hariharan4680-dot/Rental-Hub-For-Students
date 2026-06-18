@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rental Hub - Home</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='assets/style.css') }}">
+</head>
+<body>
+  <div class="wrapper">
+    <div class="container">
+      <h1 class="title">Rental Hub for Students</h1>
+      <p class="tagline">Find or share rentals like rooms, bikes, books & more!</p>
+
+      <div class="btn-group">
+        <a href="{{ url_for('login_page') }}" class="btn">Login</a>
+        <a href="{{ url_for('register_page') }}" class="btn">Register</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Post New Rental - Rental Hub</title>
+
+  <!-- Reuse your existing styles -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='assets/style.css') }}">
+
+  <style>
+    /* Small form tweaks on top of your style.css */
+    .container h2 { margin-bottom: 8px; }
+    .hint { font-size: .9rem; color: #bbb; margin-bottom: 16px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .actions { display: flex; gap: 12px; justify-content: center; margin-top: 10px; }
+    .btn.secondary { background: transparent; border: 1px solid rgba(255,255,255,.4); box-shadow: none; }
+    select.input-field { background-color: rgba(255,255,255,0.1); color:#fff; }
+    option { color:#000; }
+    /* Image preview style */
+    #imagePreview {
+      max-width: 200px;
+      border-radius: 8px;
+      margin-top: 10px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="container">
+      <h2 class="title">Post a New Rental</h2>
+      <p class="hint">Fill in the details below and publish your listing.</p>
+
+      <form id="postForm" enctype="multipart/form-data">
+        <!-- Category -->
+        <div class="row">
+          <select name="category" class="input-field">
+            <option value="">Category (optional)</option>
+            <option value="room">Room</option>
+            <option value="bike">Bike</option>
+            <option value="book">Book</option>
+            <option value="other">Other</option>
+          </select>
+
+          <input type="text" name="title" placeholder="Title (e.g., Room near BHC)" required class="input-field">
+        </div>
+
+        <div class="row">
+          <input type="text" name="location" placeholder="Location (e.g., Trichy)" required class="input-field">
+          <input type="number" name="price" placeholder="Monthly Rent (₹)" min="0" required class="input-field">
+        </div>
+
+        <textarea name="description" placeholder="Description" rows="5" required class="input-field"></textarea>
+
+        <!-- Image Upload -->
+        <label for="postImage" class="hint">Upload an image (optional)</label>
+        <input type="file" id="postImage" name="image" accept="image/*" class="input-field">
+        <img id="imagePreview" alt="Image Preview">
+
+        <div class="actions">
+          <button type="submit" class="btn">Post Rental</button>
+          <a class="btn secondary" href="{{ url_for('dashboard_page') }}">Cancel</a>
+        </div>
+      </form>
+
+      <p class="form-footer">
+        Done here? <a href="{{ url_for('dashboard_page') }}">Back to Dashboard</a>
+      </p>
+    </div>
+  </div>
+
+  <script>
+    // 1) Require login
+    const token = localStorage.getItem('token');
+    if (!token) {
+      window.location.href = "{{ url_for('login_page') }}";
+    }
+
+    // 2) Image preview
+    document.getElementById('postImage').addEventListener('change', function() {
+      const file = this.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        const img = document.getElementById('imagePreview');
+        img.src = e.target.result;
+        img.style.display = 'block';
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // 3) Handle form submit (send FormData)
+    document.getElementById('postForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const form = e.target;
+      const formData = new FormData(form);
+
+      try {
+        const res = await fetch('/api/post-rent', {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + token
+            // ❌ don't set Content-Type manually when using FormData
+          },
+          body: formData
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          alert(data.error || 'Failed to post. Please try again.');
+          if (res.status === 401) {
+            localStorage.removeItem('token');
+            window.location.href = "{{ url_for('login_page') }}";
+          }
+          return;
+        }
+
+        alert('Rental posted successfully!');
+        window.location.href = "{{ url_for('dashboard_page') }}";
+
+      } catch (err) {
+        console.error(err);
+        alert('Network error. Please try again.');
+      }
+    });
+  </script>
+</body>
+</html>
